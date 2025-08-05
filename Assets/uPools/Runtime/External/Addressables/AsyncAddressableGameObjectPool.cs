@@ -18,7 +18,7 @@ namespace uPools
         
         public AsyncAddressableGameObjectPool(AssetReferenceGameObject reference)
         {
-            if (key == null) throw new ArgumentNullException(nameof(key));
+            if (reference == null) throw new ArgumentNullException(nameof(reference));
             this.key = reference.RuntimeKey;
         }
 
