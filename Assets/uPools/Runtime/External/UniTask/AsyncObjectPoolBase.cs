@@ -73,6 +73,7 @@ namespace uPools
         {
             if (isDisposed) throw new ObjectDisposedException(GetType().Name);
         }
+        public IReadOnlyCollection<T> GetActiveItems() => stack;
     }
 }
 #endif
