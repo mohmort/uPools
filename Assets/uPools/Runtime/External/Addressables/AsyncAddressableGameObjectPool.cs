@@ -1,6 +1,7 @@
 #if UPOOLS_ADDRESSABLES_SUPPORT && UPOOLS_UNITASK_SUPPORT
 using System;
 using System.Collections.Generic;
+using System.Linq;
 using System.Threading;
 using Cysharp.Threading.Tasks;
 using UnityEngine;
@@ -24,6 +25,8 @@ namespace uPools
 
         readonly object key;
         readonly Stack<GameObject> stack = new(32);
+        readonly HashSet<GameObject> rentedItems = new();
+        readonly HashSet<GameObject> allManagedObjects = new();
         bool isDisposed;
 
         public int Count => stack.Count;
@@ -36,12 +39,14 @@ namespace uPools
             if (!stack.TryPop(out var obj))
             {
                 obj = await Addressables.InstantiateAsync(key).ToUniTask(cancellationToken: cancellationToken);
+                allManagedObjects.Add(obj);
             }
             else
             {
                 obj.SetActive(true);
             }
 
+            rentedItems.Add(obj);
             PoolCallbackHelper.InvokeOnRent(obj);
             return obj;
         }
@@ -53,6 +58,7 @@ namespace uPools
             if (!stack.TryPop(out var obj))
             {
                 obj = await Addressables.InstantiateAsync(key, parent).ToUniTask(cancellationToken: cancellationToken);
+                allManagedObjects.Add(obj);
             }
             else
             {
@@ -60,6 +66,7 @@ namespace uPools
                 obj.SetActive(true);
             }
 
+            rentedItems.Add(obj);
             PoolCallbackHelper.InvokeOnRent(obj);
             return obj;
         }
@@ -71,6 +78,7 @@ namespace uPools
             if (!stack.TryPop(out var obj))
             {
                 obj = await Addressables.InstantiateAsync(key, position, rotation).ToUniTask(cancellationToken: cancellationToken);
+                allManagedObjects.Add(obj);
             }
             else
             {
@@ -78,6 +86,7 @@ namespace uPools
                 obj.SetActive(true);
             }
 
+            rentedItems.Add(obj);
             PoolCallbackHelper.InvokeOnRent(obj);
             return obj;
         }
@@ -89,6 +98,7 @@ namespace uPools
             if (!stack.TryPop(out var obj))
             {
                 obj = await Addressables.InstantiateAsync(key, position, rotation, parent);
+                allManagedObjects.Add(obj);
             }
             else
             {
@@ -97,6 +107,7 @@ namespace uPools
                 obj.SetActive(true);
             }
 
+            rentedItems.Add(obj);
             PoolCallbackHelper.InvokeOnRent(obj);
             return obj;
         }
@@ -105,6 +116,7 @@ namespace uPools
         {
             ThrowIfDisposed();
 
+            rentedItems.Remove(obj);
             stack.Push(obj);
             obj.SetActive(false);
 
@@ -119,6 +131,15 @@ namespace uPools
             {
                 Addressables.ReleaseInstance(obj);
             }
+            
+            // Clean up any remaining rented items
+            foreach (var rentedObj in rentedItems.ToArray())
+            {
+                Addressables.ReleaseInstance(rentedObj);
+            }
+            
+            rentedItems.Clear();
+            allManagedObjects.Clear();
         }
 
         public async UniTask PrewarmAsync(int count, CancellationToken cancellationToken = default)
@@ -128,6 +149,7 @@ namespace uPools
             for (int i = 0; i < count; i++)
             {
                 var obj = await Addressables.InstantiateAsync(key).ToUniTask(cancellationToken: cancellationToken);
+                allManagedObjects.Add(obj);
 
                 stack.Push(obj);
                 obj.SetActive(false);
@@ -147,6 +169,10 @@ namespace uPools
         {
             if (isDisposed) throw new ObjectDisposedException(GetType().Name);
         }
+        
+        public IReadOnlyCollection<GameObject> GetAllObjects() => allManagedObjects;
+        public IReadOnlyCollection<GameObject> GetRentedObjects() => rentedItems;
+        public IReadOnlyCollection<GameObject> GetAvailableObjects() => stack;
     }
 }
 #endif

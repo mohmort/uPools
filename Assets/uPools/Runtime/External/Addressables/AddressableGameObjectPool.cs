@@ -1,6 +1,7 @@
 #if UPOOLS_ADDRESSABLES_SUPPORT
 using System;
 using System.Collections.Generic;
+using System.Linq;
 using UnityEngine;
 using UnityEngine.AddressableAssets;
 
@@ -16,12 +17,14 @@ namespace uPools
 
         public AddressableGameObjectPool(AssetReferenceGameObject reference)
         {
-            if (key == null) throw new ArgumentNullException(nameof(key));
+            if (reference == null) throw new ArgumentNullException(nameof(reference));
             this.key = reference.RuntimeKey;
         }
 
         readonly object key;
         readonly Stack<GameObject> stack = new(32);
+        readonly HashSet<GameObject> rentedItems = new();
+        readonly HashSet<GameObject> allManagedObjects = new();
         bool isDisposed;
 
         public int Count => stack.Count;
@@ -34,12 +37,14 @@ namespace uPools
             if (!stack.TryPop(out var obj))
             {
                 obj = Addressables.InstantiateAsync(key).WaitForCompletion();
+                allManagedObjects.Add(obj);
             }
             else
             {
                 obj.SetActive(true);
             }
 
+            rentedItems.Add(obj);
             PoolCallbackHelper.InvokeOnRent(obj);
             return obj;
         }
@@ -51,6 +56,7 @@ namespace uPools
             if (!stack.TryPop(out var obj))
             {
                 obj = Addressables.InstantiateAsync(key, parent).WaitForCompletion();
+                allManagedObjects.Add(obj);
             }
             else
             {
@@ -58,6 +64,7 @@ namespace uPools
                 obj.SetActive(true);
             }
 
+            rentedItems.Add(obj);
             PoolCallbackHelper.InvokeOnRent(obj);
             return obj;
         }
@@ -69,6 +76,7 @@ namespace uPools
             if (!stack.TryPop(out var obj))
             {
                 obj = Addressables.InstantiateAsync(key, position, rotation).WaitForCompletion();
+                allManagedObjects.Add(obj);
             }
             else
             {
@@ -76,6 +84,7 @@ namespace uPools
                 obj.SetActive(true);
             }
 
+            rentedItems.Add(obj);
             PoolCallbackHelper.InvokeOnRent(obj);
             return obj;
         }
@@ -87,6 +96,7 @@ namespace uPools
             if (!stack.TryPop(out var obj))
             {
                 obj = Addressables.InstantiateAsync(key, position, rotation, parent).WaitForCompletion();
+                allManagedObjects.Add(obj);
             }
             else
             {
@@ -95,6 +105,7 @@ namespace uPools
                 obj.SetActive(true);
             }
 
+            rentedItems.Add(obj);
             PoolCallbackHelper.InvokeOnRent(obj);
             return obj;
         }
@@ -103,6 +114,7 @@ namespace uPools
         {
             ThrowIfDisposed();
 
+            rentedItems.Remove(obj);
             stack.Push(obj);
             obj.SetActive(false);
 
@@ -117,6 +129,15 @@ namespace uPools
             {
                 Addressables.ReleaseInstance(obj);
             }
+            
+            // Clean up any remaining rented items
+            foreach (var rentedObj in rentedItems.ToArray())
+            {
+                Addressables.ReleaseInstance(rentedObj);
+            }
+            
+            rentedItems.Clear();
+            allManagedObjects.Clear();
         }
 
         public void Prewarm(int count)
@@ -126,6 +147,7 @@ namespace uPools
             for (int i = 0; i < count; i++)
             {
                 var obj = Addressables.InstantiateAsync(key).WaitForCompletion();
+                allManagedObjects.Add(obj);
 
                 stack.Push(obj);
                 obj.SetActive(false);
@@ -145,6 +167,10 @@ namespace uPools
         {
             if (isDisposed) throw new ObjectDisposedException(GetType().Name);
         }
+        
+        public IReadOnlyCollection<GameObject> GetAllObjects() => allManagedObjects;
+        public IReadOnlyCollection<GameObject> GetRentedObjects() => rentedItems;
+        public IReadOnlyCollection<GameObject> GetAvailableObjects() => stack;
     }
 }
 #endif
