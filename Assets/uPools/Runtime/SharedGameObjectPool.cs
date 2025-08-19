@@ -1,5 +1,6 @@
 using System;
 using System.Collections.Generic;
+using System.Linq;
 using UnityEngine;
 
 namespace uPools
@@ -178,6 +179,80 @@ namespace uPools
 
                 PoolCallbackHelper.InvokeOnReturn(obj);
             }
+        }
+
+        /// <summary>
+        /// Gets all objects managed by pools for a specific original (both available and rented)
+        /// </summary>
+        public static IReadOnlyCollection<GameObject> GetAllObjects(GameObject original)
+        {
+            if (original == null) throw new ArgumentNullException(nameof(original));
+            
+            var allObjects = new List<GameObject>();
+            
+            // Add available objects from the pool
+            if (pools.TryGetValue(original, out var pool))
+            {
+                allObjects.AddRange(pool);
+            }
+            
+            // Add rented objects
+            foreach (var kvp in cloneReferences)
+            {
+                if (kvp.Value == pool)
+                {
+                    allObjects.Add(kvp.Key);
+                }
+            }
+            
+            return allObjects;
+        }
+        
+        /// <summary>
+        /// Gets objects that are currently rented out for a specific original
+        /// </summary>
+        public static IReadOnlyCollection<GameObject> GetRentedObjects(GameObject original)
+        {
+            if (original == null) throw new ArgumentNullException(nameof(original));
+            
+            if (!pools.TryGetValue(original, out var pool))
+            {
+                return Array.Empty<GameObject>();
+            }
+            
+            var rentedObjects = new List<GameObject>();
+            foreach (var kvp in cloneReferences)
+            {
+                if (kvp.Value == pool)
+                {
+                    rentedObjects.Add(kvp.Key);
+                }
+            }
+            
+            return rentedObjects;
+        }
+        
+        /// <summary>
+        /// Gets objects that are currently available in the pool for a specific original
+        /// </summary>
+        public static IReadOnlyCollection<GameObject> GetAvailableObjects(GameObject original)
+        {
+            if (original == null) throw new ArgumentNullException(nameof(original));
+            
+            if (pools.TryGetValue(original, out var pool))
+            {
+                return pool.ToArray();
+            }
+            
+            return Array.Empty<GameObject>();
+        }
+        
+        /// <summary>
+        /// Gets all rented objects across all pools
+        /// </summary>
+        public static IReadOnlyCollection<GameObject> GetAllRentedObjects()
+        {
+            return cloneReferences.Keys.ToArray();
         }
 
         static Stack<GameObject> GetOrCreatePool(GameObject original)

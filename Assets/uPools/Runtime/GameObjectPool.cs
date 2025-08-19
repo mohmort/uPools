@@ -1,5 +1,6 @@
 using System;
 using System.Collections.Generic;
+using System.Linq;
 using UnityEngine;
 
 namespace uPools
@@ -14,6 +15,8 @@ namespace uPools
 
         readonly GameObject original;
         readonly Stack<GameObject> stack = new(32);
+        readonly HashSet<GameObject> rentedItems = new();
+        readonly HashSet<GameObject> allManagedObjects = new();
         bool isDisposed;
 
         public int Count => stack.Count;
@@ -26,12 +29,14 @@ namespace uPools
             if (!stack.TryPop(out var obj))
             {
                 obj = UnityEngine.Object.Instantiate(original);
+                allManagedObjects.Add(obj);
             }
             else
             {
                 obj.SetActive(true);
             }
 
+            rentedItems.Add(obj);
             PoolCallbackHelper.InvokeOnRent(obj);
             return obj;
         }
@@ -43,6 +48,7 @@ namespace uPools
             if (!stack.TryPop(out var obj))
             {
                 obj = UnityEngine.Object.Instantiate(original, parent);
+                allManagedObjects.Add(obj);
             }
             else
             {
@@ -50,6 +56,7 @@ namespace uPools
                 obj.SetActive(true);
             }
 
+            rentedItems.Add(obj);
             PoolCallbackHelper.InvokeOnRent(obj);
             return obj;
         }
@@ -61,6 +68,7 @@ namespace uPools
             if (!stack.TryPop(out var obj))
             {
                 obj = UnityEngine.Object.Instantiate(original, position, rotation);
+                allManagedObjects.Add(obj);
             }
             else
             {
@@ -68,6 +76,7 @@ namespace uPools
                 obj.SetActive(true);
             }
 
+            rentedItems.Add(obj);
             PoolCallbackHelper.InvokeOnRent(obj);
             return obj;
         }
@@ -79,6 +88,7 @@ namespace uPools
             if (!stack.TryPop(out var obj))
             {
                 obj = UnityEngine.Object.Instantiate(original, position, rotation, parent);
+                allManagedObjects.Add(obj);
             }
             else
             {
@@ -87,6 +97,7 @@ namespace uPools
                 obj.SetActive(true);
             }
 
+            rentedItems.Add(obj);
             PoolCallbackHelper.InvokeOnRent(obj);
             return obj;
         }
@@ -95,6 +106,7 @@ namespace uPools
         {
             ThrowIfDisposed();
 
+            rentedItems.Remove(obj);
             stack.Push(obj);
             obj.SetActive(false);
 
@@ -109,6 +121,15 @@ namespace uPools
             {
                 UnityEngine.Object.Destroy(obj);
             }
+            
+            // Clean up any remaining rented items
+            foreach (var rentedObj in rentedItems.ToArray())
+            {
+                UnityEngine.Object.Destroy(rentedObj);
+            }
+            
+            rentedItems.Clear();
+            allManagedObjects.Clear();
         }
 
         public void Prewarm(int count)
@@ -118,6 +139,7 @@ namespace uPools
             for (int i = 0; i < count; i++)
             {
                 var obj = UnityEngine.Object.Instantiate(original);
+                allManagedObjects.Add(obj);
 
                 stack.Push(obj);
                 obj.SetActive(false);
@@ -138,6 +160,8 @@ namespace uPools
             if (isDisposed) throw new ObjectDisposedException(GetType().Name);
         }
         
-        public IReadOnlyCollection<GameObject> GetActiveItems() => stack;
+        public IReadOnlyCollection<GameObject> GetAllObjects() => allManagedObjects;
+        public IReadOnlyCollection<GameObject> GetRentedObjects() => rentedItems;
+        public IReadOnlyCollection<GameObject> GetAvailableObjects() => stack;
     }
 }

@@ -1,5 +1,6 @@
 using System;
 using System.Collections.Generic;
+using System.Linq;
 
 namespace uPools
 {
@@ -7,6 +8,8 @@ namespace uPools
         where T : class
     {
         protected readonly Stack<T> stack = new(32);
+        protected readonly HashSet<T> rentedItems = new();
+        protected readonly HashSet<T> allManagedObjects = new();
         bool isDisposed;
 
         protected abstract T CreateInstance();
@@ -17,21 +20,30 @@ namespace uPools
         public T Rent()
         {
             ThrowIfDisposed();
-            if (stack.TryPop(out var obj))
+            T obj;
+            
+            if (stack.TryPop(out obj))
             {
+                rentedItems.Add(obj);
                 OnRent(obj);
                 if (obj is IPoolCallbackReceiver receiver) receiver.OnRent();
                 return obj;
             }
 
-            return CreateInstance();
+            obj = CreateInstance();
+            allManagedObjects.Add(obj);
+            rentedItems.Add(obj);
+            OnRent(obj);
+            if (obj is IPoolCallbackReceiver receiver) receiver.OnRent();
+            return obj;
         }
 
         public void Return(T obj)
         {
             ThrowIfDisposed();
             if (obj == null) throw new ArgumentNullException(nameof(obj));
-
+            
+            rentedItems.Remove(obj);
             OnReturn(obj);
             if (obj is IPoolCallbackReceiver receiver) receiver.OnReturn();
             stack.Push(obj);
@@ -44,6 +56,15 @@ namespace uPools
             {
                 OnDestroy(obj);
             }
+            
+            // Clean up any remaining rented items
+            foreach (var rentedObj in rentedItems.ToArray())
+            {
+                OnDestroy(rentedObj);
+            }
+            
+            rentedItems.Clear();
+            allManagedObjects.Clear();
         }
 
         public void Prewarm(int count)
@@ -52,7 +73,10 @@ namespace uPools
             for (int i = 0; i < count; i++)
             {
                 var instance = CreateInstance();
-                Return(instance);
+                allManagedObjects.Add(instance);
+                OnReturn(instance);
+                if (instance is IPoolCallbackReceiver receiver) receiver.OnReturn();
+                stack.Push(instance);
             }
         }
 
@@ -70,6 +94,9 @@ namespace uPools
         {
             if (isDisposed) throw new ObjectDisposedException(GetType().Name);
         }
-        public IReadOnlyCollection<T> GetActiveItems() => stack;
+        
+        public IReadOnlyCollection<T> GetAllObjects() => allManagedObjects;
+        public IReadOnlyCollection<T> GetRentedObjects() => rentedItems;
+        public IReadOnlyCollection<T> GetAvailableObjects() => stack;
     }
 }
