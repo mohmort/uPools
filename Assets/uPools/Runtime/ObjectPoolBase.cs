@@ -34,7 +34,7 @@ namespace uPools
             allManagedObjects.Add(obj);
             rentedItems.Add(obj);
             OnRent(obj);
-            if (obj is IPoolCallbackReceiver receiver) receiver.OnRent();
+            if (obj is IPoolCallbackReceiver receiver2) receiver2.OnRent();
             return obj;
         }
 
